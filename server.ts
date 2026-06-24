@@ -769,6 +769,110 @@ app.post("/api/admin/settings", (req, res) => {
   res.json({ success: true, settings: db.adminSettings });
 });
 
+// --- ADMIN DIRECT SQL ACCESS ---
+app.post("/api/admin/sql", (req, res) => {
+  const { query, author } = req.body;
+  if (!query) {
+    return res.status(400).json({ error: "Instruction SQL vide." });
+  }
+
+  const db = getDb();
+  const trimmed = query.trim().replace(/;$/, "");
+  const normalized = trimmed.toUpperCase();
+
+  try {
+    let resultRows: any[] = [];
+    let affectedCount = 0;
+    let message = "Commande SQL exécutée avec succès";
+
+    if (normalized.startsWith("SELECT")) {
+      if (normalized.includes("FROM USERS")) {
+        resultRows = db.users;
+      } else if (normalized.includes("FROM PROJECTS")) {
+        resultRows = db.projects;
+      } else if (normalized.includes("FROM PROMOCODES") || normalized.includes("FROM PROMO")) {
+        resultRows = db.promoCodes;
+      } else if (normalized.includes("FROM PROJECTIONS")) {
+        resultRows = db.projections;
+      } else if (normalized.includes("FROM LOGS")) {
+        resultRows = db.logs;
+      } else {
+        resultRows = [{ id: "system", status: "ONLINE", message: "Commande SELECT simulée" }];
+      }
+
+      const whereMatch = trimmed.match(/where\s+(\w+)\s*=\s*'([^']+)'/i);
+      if (whereMatch && resultRows.length > 0) {
+        const field = whereMatch[1].toLowerCase();
+        const val = whereMatch[2];
+        resultRows = resultRows.filter(row => String(row[field]).toLowerCase() === val.toLowerCase());
+      }
+
+      message = `${resultRows.length} ligne(s) sélectionnée(s).`;
+    } else if (normalized.startsWith("UPDATE")) {
+      const setMatch = trimmed.match(/update\s+(\w+)\s+set\s+(\w+)\s*=\s*(.+?)(?:\s+where\s+(.+))?$/i);
+      if (setMatch) {
+        const table = setMatch[1].toLowerCase();
+        const field = setMatch[2];
+        let valStr = setMatch[3].trim().replace(/^['"]|['"]$/g, "");
+        const whereClause = setMatch[4];
+
+        let targetTable: any[] = [];
+        if (table === "users") targetTable = db.users;
+        else if (table === "projects") targetTable = db.projects;
+        else if (table === "promocodes" || table === "promo") targetTable = db.promoCodes;
+
+        let itemsToUpdate = targetTable;
+        if (whereClause) {
+          const eqMatch = whereClause.match(/(\w+)\s*=\s*'([^']+)'/i);
+          if (eqMatch) {
+            const wField = eqMatch[1].toLowerCase();
+            const wVal = eqMatch[2];
+            itemsToUpdate = targetTable.filter(item => String(item[wField]).toLowerCase() === wVal.toLowerCase());
+          }
+        }
+
+        itemsToUpdate.forEach(item => {
+          let parsedVal: any = valStr;
+          if (valStr.toLowerCase() === "true") parsedVal = true;
+          else if (valStr.toLowerCase() === "false") parsedVal = false;
+          else if (!isNaN(Number(valStr))) parsedVal = Number(valStr);
+
+          (item as any)[field] = parsedVal;
+          affectedCount++;
+        });
+
+        if (affectedCount > 0) {
+          saveDb(db);
+          message = `${affectedCount} ligne(s) mise(s) à jour.`;
+        } else {
+          message = "Aucune ligne correspondante trouvée.";
+        }
+      } else {
+        message = "Syntaxe d'UPDATE non prise en charge dans ce bac à sable.";
+      }
+    } else {
+      message = `Commande SQL '${trimmed.substring(0, 20)}...' simulée avec succès sur le serveur PostgreSQL distant.`;
+    }
+
+    db.logs.unshift({
+      timestamp: new Date().toISOString(),
+      action: `Exécution SQL: ${trimmed}`,
+      user: author || "admin@toposuite.ma"
+    });
+    saveDb(db);
+
+    res.json({
+      success: true,
+      query: trimmed,
+      message,
+      columns: resultRows.length > 0 ? Object.keys(resultRows[0]) : ["Status"],
+      rows: resultRows.length > 0 ? resultRows : [{ Status: "Succès", Message: message }]
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Erreur lors de l'exécution SQL" });
+  }
+});
+
 app.get("/api/admin/logs", (req, res) => {
   const db = getDb();
   res.json(db.logs);

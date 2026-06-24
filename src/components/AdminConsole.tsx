@@ -75,6 +75,12 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
   const [isMfaEnabled, setIsMfaEnabled] = useState(true);
   const [securityEncryptionKey, setSecurityEncryptionKey] = useState("AES-256-GCM-SURV-KEY-PRO");
 
+  // Direct SQL terminal states
+  const [sqlQuery, setSqlQuery] = useState("SELECT * FROM users;");
+  const [sqlResult, setSqlResult] = useState<{ success: boolean; message: string; columns: string[]; rows: any[] } | null>(null);
+  const [sqlError, setSqlError] = useState<string | null>(null);
+  const [executingSql, setExecutingSql] = useState(false);
+
   // Fetch all admin data
   const fetchAdminData = async () => {
     try {
@@ -264,6 +270,34 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
     }, 1200);
   };
 
+  const handleExecuteSql = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!sqlQuery.trim()) return;
+    setExecutingSql(true);
+    setSqlError(null);
+    setSqlResult(null);
+
+    try {
+      const res = await fetch("/api/admin/sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: sqlQuery, author: "admin@toposuite.ma" })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSqlResult(data);
+        onLogAction(`Exécuté SQL: ${sqlQuery.substring(0, 30)}...`);
+        fetchAdminData(); // refresh in case something was updated
+      } else {
+        setSqlError(data.error || "Une erreur s'est produite lors de l'exécution.");
+      }
+    } catch (err) {
+      setSqlError("Impossible de se connecter au service d'arrière-plan SQL.");
+    } finally {
+      setExecutingSql(false);
+    }
+  };
+
   return (
     <div className="space-y-6 text-slate-100 font-sans">
       
@@ -299,9 +333,9 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
         {/* Sub-tab selection bar */}
         <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center gap-1.5 text-xs font-mono font-bold">
           <button
-            onClick={() => setActiveSubTab("general")}
+            onClick={() => { setActiveTab("settings"); setActiveSubTab("general"); }}
             className={`px-3 py-1.5 rounded transition-all cursor-pointer ${
-              activeSubTab === "general"
+              activeTab === "settings" && activeSubTab === "general"
                 ? "bg-[#1E293B] text-white border-b-2 border-[#00F5D4]"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -309,9 +343,9 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
             Général
           </button>
           <button
-            onClick={() => setActiveSubTab("theme")}
+            onClick={() => { setActiveTab("settings"); setActiveSubTab("theme"); }}
             className={`px-3 py-1.5 rounded transition-all cursor-pointer ${
-              activeSubTab === "theme"
+              activeTab === "settings" && activeSubTab === "theme"
                 ? "bg-[#1E293B] text-white border-b-2 border-[#00F5D4]"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -319,9 +353,9 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
             Thème
           </button>
           <button
-            onClick={() => setActiveSubTab("sql")}
+            onClick={() => { setActiveTab("settings"); setActiveSubTab("sql"); }}
             className={`px-3 py-1.5 rounded transition-all cursor-pointer ${
-              activeSubTab === "sql"
+              activeTab === "settings" && activeSubTab === "sql"
                 ? "bg-[#1E293B] text-white border-b-2 border-[#00F5D4]"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -329,9 +363,9 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
             Base SQL
           </button>
           <button
-            onClick={() => setActiveSubTab("maps")}
+            onClick={() => { setActiveTab("settings"); setActiveSubTab("maps"); }}
             className={`px-3 py-1.5 rounded transition-all cursor-pointer ${
-              activeSubTab === "maps"
+              activeTab === "settings" && activeSubTab === "maps"
                 ? "bg-[#1E293B] text-white border-b-2 border-[#00F5D4]"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -339,9 +373,9 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
             API Cartes
           </button>
           <button
-            onClick={() => setActiveSubTab("system")}
+            onClick={() => { setActiveTab("settings"); setActiveSubTab("system"); }}
             className={`px-3 py-1.5 rounded transition-all cursor-pointer ${
-              activeSubTab === "system"
+              activeTab === "settings" && activeSubTab === "system"
                 ? "bg-[#1E293B] text-white border-b-2 border-[#00F5D4]"
                 : "text-slate-400 hover:text-white"
             }`}
@@ -1454,30 +1488,552 @@ export default function AdminConsole({ onLogAction }: AdminConsoleProps) {
 
           {activeTab === "settings" && adminSettings && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="space-y-0.5">
-                  <h3 className="text-md font-bold text-white">Configuration du Site</h3>
-                  <p className="text-xs text-slate-400">Administrez les paramètres globaux, la marque et l'accès au site.</p>
+              {/* Header Title with Active Subtab Indicator */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-4 gap-3">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono font-bold tracking-widest text-indigo-400 uppercase bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">
+                    CONSOLE CONFIGURATION • {activeSubTab.toUpperCase()}
+                  </span>
+                  <h3 className="text-lg font-black text-white tracking-tight flex items-center space-x-2">
+                    <span>Paramètres Globaux du Portail</span>
+                    <span className="text-slate-600 font-normal">/</span>
+                    <span className="text-indigo-400 capitalize">{activeSubTab === "sql" ? "Direct SQL Query" : activeSubTab === "maps" ? "Cartes & Géodésie" : activeSubTab}</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {activeSubTab === "general" && "Gérez l'identité visuelle de connexion, le titre de l'application et les bannières d'alerte."}
+                    {activeSubTab === "theme" && "Sélectionnez le schéma de couleur maître et la force de l'effet de flou (Glassmorphism)."}
+                    {activeSubTab === "sql" && "Requêtez en direct la base de données Phoenix Topo DB via des instructions SQL."}
+                    {activeSubTab === "maps" && "Configurez le fournisseur de tuiles cartographiques par défaut et les clés d'API SIG."}
+                    {activeSubTab === "system" && "Activez ou désactivez les modules topographiques pour l'ensemble des géomètres agréés."}
+                  </p>
                 </div>
+
+                <button
+                  onClick={() => handleUpdateSettings(adminSettings)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0 self-start sm:self-center"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Enregistrer Tout</span>
+                </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4 p-4 bg-[#080C16] border border-slate-800 rounded-xl">
-                  <h4 className="text-sm font-bold text-white">Branding</h4>
-                  <input type="text" value={adminSettings.brandingTitle} onChange={e => handleUpdateSettings({...adminSettings, brandingTitle: e.target.value})} className="w-full bg-[#0B1220] border border-slate-800 rounded p-2 text-white" />
-                  <input type="text" value={adminSettings.loginSubtitle} onChange={e => handleUpdateSettings({...adminSettings, loginSubtitle: e.target.value})} className="w-full bg-[#0B1220] border border-slate-800 rounded p-2 text-white" />
+
+              {/* Subtab 1: GENERAL */}
+              {activeSubTab === "general" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="md:col-span-2 space-y-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl">
+                    <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                      <Shield className="w-4 h-4 text-indigo-400" />
+                      <span>Branding & News nationales</span>
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-mono font-bold text-slate-400">TITRE PRINCIPAL DU SITE</label>
+                        <input
+                          type="text"
+                          value={adminSettings.brandingTitle}
+                          onChange={e => handleUpdateSettings({ ...adminSettings, brandingTitle: e.target.value })}
+                          className="w-full bg-[#0B1220] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-mono font-bold text-slate-400">BANNER D'ANNONCE ACTIVE</label>
+                        <input
+                          type="text"
+                          value={adminSettings.announcementBanner}
+                          onChange={e => handleUpdateSettings({ ...adminSettings, announcementBanner: e.target.value })}
+                          className="w-full bg-[#0B1220] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-mono font-bold text-slate-400">SOUS-TITRE DE LA PAGE DE CONNEXION</label>
+                      <textarea
+                        rows={2}
+                        value={adminSettings.loginSubtitle}
+                        onChange={e => handleUpdateSettings({ ...adminSettings, loginSubtitle: e.target.value })}
+                        className="w-full bg-[#0B1220] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex flex-wrap gap-6">
+                      <label className="flex items-center space-x-3 cursor-pointer bg-[#0B1220] p-3 rounded-xl border border-slate-850 hover:border-slate-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={adminSettings.showAnnouncement}
+                          onChange={e => handleUpdateSettings({ ...adminSettings, showAnnouncement: e.target.checked })}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 bg-[#0B1220] border-slate-800"
+                        />
+                        <div>
+                          <span className="block text-xs font-bold text-slate-200">Afficher la Bannière d'Annonce</span>
+                          <span className="block text-[10px] text-slate-500 font-mono">Bannière globale en haut du tableau de bord</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center space-x-3 cursor-pointer bg-[#0B1220] p-3 rounded-xl border border-slate-850 hover:border-slate-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={adminSettings.allowRegistration}
+                          onChange={e => handleUpdateSettings({ ...adminSettings, allowRegistration: e.target.checked })}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 bg-[#0B1220] border-slate-800"
+                        />
+                        <div>
+                          <span className="block text-xs font-bold text-slate-200">Autoriser les inscriptions</span>
+                          <span className="block text-[10px] text-slate-500 font-mono">Activer le bouton de création de compte géomètre</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                        <Ban className="w-4 h-4 text-amber-500 animate-pulse" />
+                        <span>Mode Maintenance</span>
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                        L'activation de cette option déconnectera tous les géomètres non-administrateurs et affichera une page de maintenance nationale officielle. Vous gardez l'accès complet en tant qu'admin.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0B1220] border border-amber-500/20 p-4 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-slate-400">SÉCURITÉ LOCK</span>
+                        <span className={`text-[9px] font-mono font-black px-2 py-0.5 rounded ${adminSettings.maintenanceMode ? "bg-amber-500 text-slate-950 animate-pulse" : "bg-slate-800 text-slate-500"}`}>
+                          {adminSettings.maintenanceMode ? "ACTIVE" : "STANDBY"}
+                        </span>
+                      </div>
+                      
+                      <button
+                        onClick={() => handleUpdateSettings({ ...adminSettings, maintenanceMode: !adminSettings.maintenanceMode })}
+                        className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                          adminSettings.maintenanceMode
+                            ? "bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.25)]"
+                            : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+                        }`}
+                      >
+                        {adminSettings.maintenanceMode ? "Désactiver la Maintenance" : "Activer la Maintenance"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-4 p-4 bg-[#080C16] border border-slate-800 rounded-xl">
-                  <h4 className="text-sm font-bold text-white">Accès</h4>
-                  <label className="flex items-center space-x-2">
-                    <input type="checkbox" checked={adminSettings.allowRegistration} onChange={e => handleUpdateSettings({...adminSettings, allowRegistration: e.target.checked})} />
-                    <span className="text-xs text-slate-300">Autoriser l'inscription</span>
-                  </label>
-                  <label className="flex items-center space-x-2">
-                    <input type="checkbox" checked={adminSettings.maintenanceMode} onChange={e => handleUpdateSettings({...adminSettings, maintenanceMode: e.target.checked})} />
-                    <span className="text-xs text-slate-300">Mode Maintenance</span>
-                  </label>
+              )}
+
+              {/* Subtab 2: THEME */}
+              {activeSubTab === "theme" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl">
+                    <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                      <Boxes className="w-4 h-4 text-indigo-400" />
+                      <span>Palette de Couleur Maître</span>
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      Modifiez instantanément les accents de boutons, de liens, d'icônes et d'arrière-plan du site entier.
+                    </p>
+
+                    <div className="space-y-2.5 pt-2">
+                      {[
+                        { id: "indigo", name: "Deep Indigo & Cyber Mint (Standard)", color: "bg-indigo-600 border-indigo-400" },
+                        { id: "emerald", name: "Moroccan Emerald & Jade (Foncier)", color: "bg-emerald-600 border-emerald-400" },
+                        { id: "amber", name: "Solar Amber & Charcoal (Chantier)", color: "bg-amber-600 border-amber-400" },
+                        { id: "amethyst", name: "Royal Amethyst & Rose (Premium)", color: "bg-purple-600 border-purple-400" },
+                        { id: "crimson", name: "Crimson Cyber & Ruby (Urgence)", color: "bg-red-600 border-red-400" },
+                      ].map(theme => (
+                        <button
+                          key={theme.id}
+                          onClick={() => handleUpdateSettings({ ...adminSettings, primaryColorTheme: theme.id })}
+                          className={`w-full p-3 rounded-xl border text-left text-xs transition-all flex items-center justify-between cursor-pointer ${
+                            adminSettings.primaryColorTheme === theme.id
+                              ? "bg-slate-800 border-[#00F5D4] font-bold"
+                              : "bg-[#0B1220] border-slate-850 hover:border-slate-800"
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5">
+                            <span className={`w-3.5 h-3.5 rounded-full ${theme.color} border`}></span>
+                            <span>{theme.name}</span>
+                          </div>
+                          {adminSettings.primaryColorTheme === theme.id && (
+                            <span className="text-[#00F5D4] font-mono text-[9px] font-black">ACTIVE</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl">
+                    <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                      <Settings className="w-4 h-4 text-indigo-400" />
+                      <span>Verre & Transparence (Glass)</span>
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      Ajustez le niveau de flou d'arrière-plan des panneaux et des fiches cadastrales.
+                    </p>
+
+                    <div className="space-y-2.5 pt-2">
+                      {[
+                        { id: "none", name: "Solide - Pas de transparence", desc: "Arrière-plans foncés opaques pour un rendu brutal" },
+                        { id: "light", name: "Léger - Flou 4px", desc: "Transparence subtile à 90% d'opacité" },
+                        { id: "medium", name: "Moyen - Flou 12px (Conseillé)", desc: "Effet verre givré classique" },
+                        { id: "high", name: "Ultra - Flou 24px", desc: "Transparence maximale à 50% d'opacité avec néon glow" },
+                      ].map(g => (
+                        <button
+                          key={g.id}
+                          onClick={() => handleUpdateSettings({ ...adminSettings, glassmorphismStrength: g.id })}
+                          className={`w-full p-3 rounded-xl border text-left transition-all flex flex-col justify-center cursor-pointer ${
+                            adminSettings.glassmorphismStrength === g.id
+                              ? "bg-slate-800 border-[#00F5D4] font-bold"
+                              : "bg-[#0B1220] border-slate-850 hover:border-slate-800"
+                          }`}
+                        >
+                          <span className="text-xs text-white font-bold">{g.name}</span>
+                          <span className="text-[10px] text-slate-500 font-mono mt-0.5">{g.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                        <Activity className="w-4 h-4 text-[#00F5D4]" />
+                        <span>Aperçu de la Marque</span>
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-2">
+                        Voici à quoi ressemblent vos contrôles de cartes thématiques actuelles :
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0B1220] border border-slate-850 p-5 rounded-2xl space-y-4 shadow-xl">
+                      <div className="flex items-center space-x-2.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span className="text-xs font-bold text-white">{adminSettings.brandingTitle}</span>
+                      </div>
+                      
+                      <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-[10px] font-mono text-slate-400">
+                        PRIMARY_HEX_VALUE: {
+                          adminSettings.primaryColorTheme === "indigo" ? "#4F46E5" :
+                          adminSettings.primaryColorTheme === "emerald" ? "#059669" :
+                          adminSettings.primaryColorTheme === "amber" ? "#D97706" :
+                          adminSettings.primaryColorTheme === "amethyst" ? "#7C3AED" : "#DC2626"
+                        }
+                      </div>
+
+                      <button className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-lg">
+                        Bouton Action Maître
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Subtab 3: SQL */}
+              {activeSubTab === "sql" && (
+                <div className="space-y-6">
+                  {/* SQL Config Header */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl">
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono font-bold text-slate-400">SERVEUR CLOUD HOST</label>
+                      <input
+                        type="text"
+                        value={adminSettings.mysqlHost}
+                        onChange={e => handleUpdateSettings({ ...adminSettings, mysqlHost: e.target.value })}
+                        className="w-full bg-[#0B1220] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono font-bold text-slate-400">PORT DE CONNEXION</label>
+                      <input
+                        type="number"
+                        value={adminSettings.mysqlPort}
+                        onChange={e => handleUpdateSettings({ ...adminSettings, mysqlPort: parseInt(e.target.value) || 3306 })}
+                        className="w-full bg-[#0B1220] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono font-bold text-slate-400">UTILISATEUR SQL</label>
+                      <input
+                        type="text"
+                        value={adminSettings.mysqlUser}
+                        onChange={e => handleUpdateSettings({ ...adminSettings, mysqlUser: e.target.value })}
+                        className="w-full bg-[#0B1220] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono font-bold text-slate-400">BASE DE DONNÉES CIBLE</label>
+                      <input
+                        type="text"
+                        value={adminSettings.mysqlDatabase}
+                        onChange={e => handleUpdateSettings({ ...adminSettings, mysqlDatabase: e.target.value })}
+                        className="w-full bg-[#0B1220] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* SQL Terminal Console */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-1 bg-[#080C16] border border-slate-800 p-6 rounded-2xl space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-mono font-bold text-slate-300 uppercase flex items-center space-x-2">
+                          <Database className="w-4 h-4 text-emerald-400" />
+                          <span>Fichier de Commandes</span>
+                        </h4>
+                      </div>
+
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Sélectionnez un modèle d'instruction SQL prêt à l'exécution ou saisissez-le à droite :
+                      </p>
+
+                      <div className="space-y-2 pt-1 font-mono text-[10px]">
+                        {[
+                          { label: "Lister tous les géomètres", sql: "SELECT * FROM users;" },
+                          { label: "Lister tous les projets CAD", sql: "SELECT * FROM projects;" },
+                          { label: "Afficher le journal de sécurité", sql: "SELECT * FROM logs;" },
+                          { label: "Voir les projections Lambert", sql: "SELECT * FROM projections;" },
+                          { label: "Créditer Ahmed Alami (5000 jetons)", sql: "UPDATE users SET creditBalance = 5000 WHERE id = 'usr1';" },
+                          { label: "Débannir l'utilisateur test", sql: "UPDATE users SET isBanned = false WHERE id = 'usr5';" }
+                        ].map((tpl, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => {
+                              setSqlQuery(tpl.sql);
+                              setSqlError(null);
+                              setSqlResult(null);
+                            }}
+                            className="w-full p-2.5 bg-[#0B1220] hover:bg-slate-800 border border-slate-850 hover:border-slate-700 rounded-xl text-left text-indigo-400 transition-colors font-bold cursor-pointer"
+                          >
+                            <span className="block text-slate-200 text-[11px] font-sans font-bold">{tpl.label}</span>
+                            <span className="block text-[9px] text-slate-500 mt-0.5 truncate">{tpl.sql}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-850 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={testSqlConnectionDirect}
+                          disabled={testingSqlConnection}
+                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-mono text-[10px] rounded-lg cursor-pointer"
+                        >
+                          {testingSqlConnection ? "Diagnostic en cours..." : "Tester Ping Serveur"}
+                        </button>
+                      </div>
+
+                      {sqlTestMessage && (
+                        <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-900/40 text-emerald-400 font-mono text-[9px] leading-normal">
+                          {sqlTestMessage}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="lg:col-span-2 bg-[#080C16] border border-slate-800 p-6 rounded-2xl space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-mono font-bold text-slate-300 uppercase flex items-center space-x-2">
+                          <Server className="w-4 h-4 text-indigo-400" />
+                          <span>Console interactive TopoSQL</span>
+                        </h4>
+                        <span className="text-[9px] font-mono text-[#00F5D4] bg-[#00F5D4]/10 border border-[#00F5D4]/20 px-2 py-0.5 rounded uppercase font-black animate-pulse">
+                          ● PHOENIX_ACTIVE
+                        </span>
+                      </div>
+
+                      <form onSubmit={handleExecuteSql} className="space-y-3">
+                        <textarea
+                          rows={4}
+                          value={sqlQuery}
+                          onChange={e => setSqlQuery(e.target.value)}
+                          placeholder="Saisissez votre commande SQL ici..."
+                          className="w-full bg-[#05080E] border border-slate-800 rounded-2xl p-4 font-mono text-xs text-[#00F5D4] focus:outline-none focus:border-[#00F5D4] placeholder-slate-700 shadow-inner leading-relaxed"
+                        />
+                        <div className="flex items-center justify-end">
+                          <button
+                            type="submit"
+                            disabled={executingSql}
+                            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-mono text-[11px] font-bold px-5 py-2.5 rounded-xl transition-colors cursor-pointer flex items-center space-x-2"
+                          >
+                            <span>{executingSql ? "Exécution..." : "EXECUTE SQL (F5)"}</span>
+                          </button>
+                        </div>
+                      </form>
+
+                      {sqlError && (
+                        <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-red-400 font-mono text-[11px]">
+                          <strong>SQL ERROR:</strong> {sqlError}
+                        </div>
+                      )}
+
+                      {sqlResult && (
+                        <div className="space-y-3 pt-2">
+                          <div className="p-3 bg-indigo-950/20 border border-indigo-900/30 text-indigo-300 font-mono text-[11px] rounded-xl flex items-center justify-between">
+                            <span>{sqlResult.message}</span>
+                            <span className="text-[10px] text-slate-500">Query duration: 18ms</span>
+                          </div>
+
+                          <div className="overflow-x-auto border border-slate-850 rounded-xl bg-[#05080E]">
+                            <table className="w-full text-left border-collapse font-mono text-[10px]">
+                              <thead>
+                                <tr className="bg-slate-900 border-b border-slate-800 text-slate-400">
+                                  {sqlResult.columns.map((col, i) => (
+                                    <th key={i} className="p-2.5 font-bold tracking-wider uppercase border-r border-slate-850 last:border-r-0">
+                                      {col}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sqlResult.rows.map((row, idx) => (
+                                  <tr key={idx} className="border-b border-slate-850 hover:bg-slate-900/50 transition-colors last:border-b-0 text-slate-300">
+                                    {sqlResult.columns.map((col, i) => (
+                                      <td key={i} className="p-2.5 border-r border-slate-850 last:border-r-0 truncate max-w-[150px]" title={String((row as any)[col])}>
+                                        {typeof (row as any)[col] === "boolean" 
+                                          ? ((row as any)[col] ? "TRUE" : "FALSE") 
+                                          : String((row as any)[col] ?? "NULL")}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Subtab 4: MAPS */}
+              {activeSubTab === "maps" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl">
+                    <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                      <Globe className="w-4 h-4 text-indigo-400" />
+                      <span>Fournisseur de Cartographie</span>
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      Sélectionnez la couche satellite, cartographique ou topographique par défaut pour le module SIG.
+                    </p>
+
+                    <div className="space-y-2.5 pt-2">
+                      {[
+                        { id: "osm", name: "OpenStreetMap Standard", desc: "Plan vectoriel gratuit, rafraîchi par la communauté." },
+                        { id: "satellite", name: "Esri World Imagery Satellite", desc: "Imagerie aérienne satellite haute définition globale." },
+                        { id: "topo", name: "OpenTopoMap (Modèle de relief)", desc: "Affiche les courbes de niveau et altitudes du terrain." },
+                        { id: "carto-dark", name: "CartoDB Dark Matter (Nuit)", desc: "Fond de carte sombre minimaliste idéal pour les levés de nuit." }
+                      ].map(provider => (
+                        <button
+                          key={provider.id}
+                          onClick={() => handleUpdateSettings({ ...adminSettings, mapTileProvider: provider.id })}
+                          className={`w-full p-3 rounded-xl border text-left transition-all flex flex-col justify-center cursor-pointer ${
+                            adminSettings.mapTileProvider === provider.id
+                              ? "bg-slate-800 border-[#00F5D4] font-bold"
+                              : "bg-[#0B1220] border-slate-850 hover:border-slate-800"
+                          }`}
+                        >
+                          <span className="text-xs text-white font-bold">{provider.name}</span>
+                          <span className="text-[10px] text-slate-500 font-mono mt-0.5">{provider.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 bg-[#080C16] border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                        <MapPin className="w-4 h-4 text-indigo-400" />
+                        <span>Coordonnées & Référence Maroc</span>
+                      </h4>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Le portail utilise les formules de transformation d'Helmert de l'ANCFCC pour projeter les points GPS mondiaux (WGS84) vers le système national Lambert du Maroc.
+                      </p>
+
+                      <div className="p-4 bg-[#0B1220] border border-slate-850 rounded-xl space-y-3 text-xs font-mono">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">ELLIPSOÏDE CLARKE :</span>
+                          <span className="text-slate-200">Clarke 1880</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">MÉRIDIEN DE GREENWICH :</span>
+                          <span className="text-slate-200">-6.000000°</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">SYSTÈME GÉODÉSIQUE :</span>
+                          <span className="text-indigo-400 font-bold">Merchich (ONIGT)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-indigo-950/10 border border-indigo-900/20 rounded-xl text-xs text-slate-300">
+                      <span className="font-bold text-indigo-400 block mb-1">💡 Note de l'administration</span>
+                      Toutes les tuiles satellite ou topographiques Esri sont intégrées directement avec un certificat sécurisé SSL.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Subtab 5: SYSTEM */}
+              {activeSubTab === "system" && (
+                <div className="space-y-6">
+                  <div className="bg-[#080C16] border border-slate-800 p-6 rounded-2xl space-y-4">
+                    <h4 className="text-sm font-bold text-white flex items-center space-x-2 border-b border-slate-850 pb-2">
+                      <Settings className="w-4 h-4 text-indigo-400" />
+                      <span>Modules de Topographie Actifs</span>
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      Contrôlez l'affichage des fonctionnalités du menu de navigation gauche en temps réel pour tous les utilisateurs du portail.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                      {[
+                        { id: "cad", label: "Dessin CAD & Calculs", desc: "Traceur géométrique et outils de coordonnées" },
+                        { id: "gis", label: "Mapping SIG", desc: "Cartographie interactive nationale du cadastre" },
+                        { id: "bornage", label: "Bornage Foncier (PV)", desc: "Génération de procès-verbaux de bornage ONIGT" },
+                        { id: "consultation", label: "Consultation des Affaires", desc: "Recherche des dossiers et des lots cadastraux" },
+                        { id: "plans", label: "Plans de Situation (PDF)", desc: "Module de production des livrables officiels" },
+                        { id: "terrain", label: "Levés & Levés de Détail", desc: "Gestion des fiches de terrain et d'altimétrie" },
+                        { id: "reception", label: "Fiche de Réception ANCFCC", desc: "Contrôle automatique de validité cadastrale" },
+                        { id: "ai", label: "Co-Pilot Assistant IA", desc: "Conseiller topographique robotisé" }
+                      ].map(module => {
+                        const isEnabled = adminSettings.enabledModules[module.id as keyof typeof adminSettings.enabledModules] !== false;
+                        return (
+                          <div
+                            key={module.id}
+                            className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
+                              isEnabled 
+                                ? "bg-[#0B1220] border-slate-800 hover:border-slate-700" 
+                                : "bg-slate-950 border-slate-900 opacity-60"
+                            }`}
+                          >
+                            <div className="space-y-1">
+                              <span className="block text-xs font-bold text-slate-200">{module.label}</span>
+                              <span className="block text-[10px] text-slate-500 font-mono">{module.desc}</span>
+                            </div>
+
+                            <div className="pt-3 flex items-center justify-between border-t border-slate-850 mt-3">
+                              <span className={`text-[9px] font-mono font-bold ${isEnabled ? "text-emerald-400" : "text-slate-500"}`}>
+                                {isEnabled ? "ACTIF" : "DÉSACTIVÉ"}
+                              </span>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isEnabled}
+                                  onChange={e => {
+                                    const updatedModules = { ...adminSettings.enabledModules, [module.id]: e.target.checked };
+                                    handleUpdateSettings({ ...adminSettings, enabledModules: updatedModules });
+                                  }}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-8 h-4 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-slate-300 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
+                              </label>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
