@@ -73,6 +73,7 @@ export interface Project {
     fileType: string;
     uploadedAt: string;
   }[];
+  receptionConfig?: any;
 }
 
 export interface Projection {

@@ -51,6 +51,27 @@ interface FicheReceptionProps {
   onCreateProject?: (name: string, description: string, clientName: string, category: "voirie" | "batiment" | "cadastral" | "other", coordinateSystemId: string) => Promise<any>;
 }
 
+const getLogoImageSrc = (col: LogoColumn) => {
+  if (col.customImage) return col.customImage;
+  const svgMap = {
+    bahi_najib: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect x="5" y="5" width="90" height="90" rx="10" fill="#E11D48"/><path d="M25 25 H75 V75 H25 Z" fill="none" stroke="white" stroke-width="6"/><path d="M25 50 H75 M50 25 V75" stroke="white" stroke-width="4"/><circle cx="50" cy="50" r="10" fill="white"/></svg>`,
+    tgcc: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="100" viewBox="0 0 120 100"><rect x="10" y="10" width="100" height="80" rx="5" fill="#1E293B"/><path d="M20 25 L45 25 L45 35 L35 35 L35 75 L20 75 Z" fill="#EF4444"/><path d="M50 25 L80 25 L80 35 L60 35 L60 45 L75 45 L75 55 L60 55 L60 75 L50 75 Z" fill="#FFFFFF"/><path d="M85 25 L105 25 L105 35 L95 35 L95 75 L85 75 Z" fill="#EF4444"/></svg>`,
+    bettan: `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="100" viewBox="0 0 150 100"><ellipse cx="75" cy="50" rx="65" ry="40" fill="none" stroke="#0891B2" stroke-width="3"/><circle cx="75" cy="50" r="25" fill="none" stroke="#0891B2" stroke-width="2" stroke-dasharray="4 2"/><path d="M45 50 H105 M75 20 V80" stroke="#0891B2" stroke-width="1.5"/><text x="75" y="54" font-size="11" font-weight="bold" fill="#0891B2" text-anchor="middle">BETTAN</text></svg>`,
+    anep: `<svg xmlns="http://www.w3.org/2000/svg" width="140" height="100" viewBox="0 0 140 100"><path d="M10 50 Q40 20 70 50 Q100 80 130 50 Q100 20 70 50 Q40 80 10 50" fill="none" stroke="#1D4ED8" stroke-width="3"/><circle cx="70" cy="50" r="12" fill="#1D4ED8"/><text x="70" y="85" font-size="12" font-weight="extrabold" fill="#1D4ED8" text-anchor="middle">ANEP</text></svg>`,
+    maroc: `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="#D97706" stroke-width="2"/><path d="M50 15 L58 38 L82 38 L63 53 L70 76 L50 61 L30 76 L37 53 L18 38 L42 38 Z" fill="#047857" stroke="#D97706" stroke-width="2"/><circle cx="50" cy="50" r="10" fill="#D97706"/></svg>`
+  };
+  const svg = svgMap[col.logoType as keyof typeof svgMap];
+  if (svg) {
+    try {
+      const base64 = btoa(unescape(encodeURIComponent(svg)));
+      return `data:image/svg+xml;base64,${base64}`;
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+};
+
 export default function FicheReception({ 
   project, 
   projects = [], 
@@ -199,27 +220,88 @@ export default function FicheReception({
   const [revision, setRevision] = useState<string>("01");
   const [rowsPerPage, setRowsPerPage] = useState<number>(15);
 
-  // Load configuration from localStorage on project change
+  // Load configuration from project or localStorage on project change
   useEffect(() => {
-    if (project?.id) {
-      const saved = localStorage.getItem(`reception_config_${project.id}`);
-      if (saved) {
-        try {
-          const config = JSON.parse(saved);
-          if (config.logoColumns) setLogoColumns(config.logoColumns);
-          if (config.projectName) setProjectName(config.projectName);
-          if (config.missionName) setMissionName(config.missionName);
-          if (config.ficheNo) setFicheNo(config.ficheNo);
-          if (config.dateStr) setDateStr(config.dateStr);
-          if (config.planReference) setPlanReference(config.planReference);
-          if (config.controlType) setControlType(config.controlType);
-          if (config.localisation) setLocalisation(config.localisation);
-          if (config.toleranceCm !== undefined) setToleranceCm(config.toleranceCm);
-          if (config.revision) setRevision(config.revision);
-          if (config.rowsPerPage !== undefined) setRowsPerPage(config.rowsPerPage);
-        } catch (e) {
-          console.error("Error parsing reception config", e);
+    if (project) {
+      // Prefer project.receptionConfig from server if available
+      const savedConfig = project.receptionConfig || (() => {
+        const saved = localStorage.getItem(`reception_config_${project.id}`);
+        if (saved) {
+          try {
+            return JSON.parse(saved);
+          } catch (e) {
+            return null;
+          }
         }
+        return null;
+      })();
+
+      if (savedConfig) {
+        if (savedConfig.logoColumns) setLogoColumns(savedConfig.logoColumns);
+        if (savedConfig.projectName) setProjectName(savedConfig.projectName);
+        if (savedConfig.missionName) setMissionName(savedConfig.missionName);
+        if (savedConfig.ficheNo) setFicheNo(savedConfig.ficheNo);
+        if (savedConfig.dateStr) setDateStr(savedConfig.dateStr);
+        if (savedConfig.planReference) setPlanReference(savedConfig.planReference);
+        if (savedConfig.controlType) setControlType(savedConfig.controlType);
+        if (savedConfig.localisation) setLocalisation(savedConfig.localisation);
+        if (savedConfig.toleranceCm !== undefined) setToleranceCm(savedConfig.toleranceCm);
+        if (savedConfig.revision) setRevision(savedConfig.revision);
+        if (savedConfig.rowsPerPage !== undefined) setRowsPerPage(savedConfig.rowsPerPage);
+      } else {
+        // Reset to initial values or defaults if no saved config exists
+        setProjectName(project.name || "Travaux de construction du Stade de Football Al Barid à la Préfecture de Rabat");
+        setMissionName("CONTRÔLE ET SUIVI TOPOGRAPHIQUES");
+        setFicheNo("3");
+        setDateStr("2024-12-17");
+        setPlanReference("2-OTS-SABA-EXE-STR-DWG-00-PLAN COFFRAGE LES BLOCS");
+        setControlType("FOND DE FOUILLE DES SEMELLES SF2");
+        setLocalisation("Rabat");
+        setToleranceCm(3);
+        setRevision("01");
+        setRowsPerPage(15);
+        setLogoColumns([
+          {
+            sectionHeader: "SOCIETE BAHI NAJIB",
+            orgName: "BAHI NAJIB SARL",
+            subtitle: "Cabinet Topographique Agrée",
+            preset: "BAHI NAJIB",
+            logoType: "bahi_najib",
+            customImage: null
+          },
+          {
+            sectionHeader: "Entreprise",
+            orgName: "Entreprise TGCC",
+            subtitle: "Construisons Ensemble",
+            preset: "TGCC",
+            logoType: "tgcc",
+            customImage: null
+          },
+          {
+            sectionHeader: "Contrôle externe",
+            orgName: "B.E.T AHMED NANA",
+            subtitle: "Bureau d'Etude Topographique",
+            preset: "BETTAN AHMED NANA",
+            logoType: "bettan",
+            customImage: null
+          },
+          {
+            sectionHeader: "Maitre d'Ouvrage Délégué",
+            orgName: "ANEP",
+            subtitle: "Agence Nationale Equipement",
+            preset: "ANEP",
+            logoType: "anep",
+            customImage: null
+          },
+          {
+            sectionHeader: "Maitre d'Ouvrage",
+            orgName: "Royaume du Maroc",
+            subtitle: "Ministère de l'Éducation Nationale",
+            preset: "Royaume du Maroc",
+            logoType: "maroc",
+            customImage: null
+          }
+        ]);
       }
     }
   }, [project?.id]);
@@ -362,9 +444,9 @@ export default function FicheReception({
     }
   }, [project?.id]);
 
-  // Synchronize changes back to parent project
+  // Synchronize changes back to parent project (both points and receptionConfig)
   useEffect(() => {
-    if (!project || !onUpdateProject || points.length === 0) return;
+    if (!project || !onUpdateProject) return;
 
     // Map points back to standard Point structure
     const mappedPoints: Point[] = points.map(p => ({
@@ -380,16 +462,48 @@ export default function FicheReception({
       zLeve: p.zLeve
     }));
 
-    // Check if points are actually different before saving to prevent infinite updates
+    const config = {
+      logoColumns,
+      projectName,
+      missionName,
+      ficheNo,
+      dateStr,
+      planReference,
+      controlType,
+      localisation,
+      toleranceCm,
+      revision,
+      rowsPerPage
+    };
+
+    // Check if points or config are actually different before saving to prevent infinite updates
     const pointsChanged = JSON.stringify(mappedPoints) !== JSON.stringify(project.points);
-    if (pointsChanged) {
+    const configChanged = JSON.stringify(config) !== JSON.stringify(project.receptionConfig);
+
+    if (pointsChanged || configChanged) {
       const updatedProj: Project = {
         ...project,
-        points: mappedPoints
+        points: pointsChanged ? mappedPoints : project.points,
+        receptionConfig: config
       };
       onUpdateProject(updatedProj);
     }
-  }, [points, project, onUpdateProject]);
+  }, [
+    points,
+    project,
+    onUpdateProject,
+    logoColumns,
+    projectName,
+    missionName,
+    ficheNo,
+    dateStr,
+    planReference,
+    controlType,
+    localisation,
+    toleranceCm,
+    revision,
+    rowsPerPage
+  ]);
 
   // Handle Logo Column Changes
   const handleLogoChange = (index: number, field: keyof LogoColumn, value: any) => {
@@ -1023,12 +1137,29 @@ export default function FicheReception({
             <th colspan="3" class="header-cell">${logoColumns[3].sectionHeader}</th>
             <th colspan="2" class="header-cell">${logoColumns[4].sectionHeader}</th>
           </tr>
+          <tr style="height: 60px;">
+            <td colspan="2" style="vertical-align: middle; text-align: center; height: 60px; background-color: #ffffff;">
+              ${getLogoImageSrc(logoColumns[0]) ? `<img src="${getLogoImageSrc(logoColumns[0])}" height="50" style="max-height: 50px;" />` : "IGT"}
+            </td>
+            <td colspan="3" style="vertical-align: middle; text-align: center; background-color: #ffffff;">
+              ${getLogoImageSrc(logoColumns[1]) ? `<img src="${getLogoImageSrc(logoColumns[1])}" height="50" style="max-height: 50px;" />` : "IGT"}
+            </td>
+            <td colspan="3" style="vertical-align: middle; text-align: center; background-color: #ffffff;">
+              ${getLogoImageSrc(logoColumns[2]) ? `<img src="${getLogoImageSrc(logoColumns[2])}" height="50" style="max-height: 50px;" />` : "IGT"}
+            </td>
+            <td colspan="3" style="vertical-align: middle; text-align: center; background-color: #ffffff;">
+              ${getLogoImageSrc(logoColumns[3]) ? `<img src="${getLogoImageSrc(logoColumns[3])}" height="50" style="max-height: 50px;" />` : "IGT"}
+            </td>
+            <td colspan="2" style="vertical-align: middle; text-align: center; background-color: #ffffff;">
+              ${getLogoImageSrc(logoColumns[4]) ? `<img src="${getLogoImageSrc(logoColumns[4])}" height="50" style="max-height: 50px;" />` : "IGT"}
+            </td>
+          </tr>
           <tr>
-            <td colspan="2" style="font-weight: bold; font-size: 10pt; height: 30px;">${logoColumns[0].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[0].subtitle}</span></td>
-            <td colspan="3" style="font-weight: bold; font-size: 10pt;">${logoColumns[1].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[1].subtitle}</span></td>
-            <td colspan="3" style="font-weight: bold; font-size: 10pt;">${logoColumns[2].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[2].subtitle}</span></td>
-            <td colspan="3" style="font-weight: bold; font-size: 10pt;">${logoColumns[3].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[3].subtitle}</span></td>
-            <td colspan="2" style="font-weight: bold; font-size: 10pt;">${logoColumns[4].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[4].subtitle}</span></td>
+            <td colspan="2" style="font-weight: bold; font-size: 10pt; height: 35px; vertical-align: top; padding-top: 4px;">${logoColumns[0].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[0].subtitle}</span></td>
+            <td colspan="3" style="font-weight: bold; font-size: 10pt; vertical-align: top; padding-top: 4px;">${logoColumns[1].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[1].subtitle}</span></td>
+            <td colspan="3" style="font-weight: bold; font-size: 10pt; vertical-align: top; padding-top: 4px;">${logoColumns[2].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[2].subtitle}</span></td>
+            <td colspan="3" style="font-weight: bold; font-size: 10pt; vertical-align: top; padding-top: 4px;">${logoColumns[3].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[3].subtitle}</span></td>
+            <td colspan="2" style="font-weight: bold; font-size: 10pt; vertical-align: top; padding-top: 4px;">${logoColumns[4].orgName}<br/><span style="font-size: 7pt; color: #64748b;">${logoColumns[4].subtitle}</span></td>
           </tr>
 
           <!-- Spacer -->
